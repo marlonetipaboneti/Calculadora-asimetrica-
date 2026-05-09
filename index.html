@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Calculadora hedge prop firm v2</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    margin: 0;
+    padding: 20px;
+    background: #0f172a;
+    color: #e2e8f0;
+    min-height: 100vh;
+  }
+  .container { max-width: 760px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 4px 0; color: #60a5fa; }
+  .subtitle { font-size: 13px; color: #94a3b8; margin-bottom: 20px; }
+  .card {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 12px;
+    padding: 18px;
+    margin-bottom: 16px;
+  }
+  .card-header {
+    display: flex; align-items: center; gap: 10px;
+    margin-bottom: 14px;
+    color: #60a5fa; font-size: 16px; font-weight: 600;
+  }
+  .card-icon {
+    background: #2563eb; color: white;
+    width: 26px; height: 26px; border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 14px; flex-shrink: 0;
+  }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+  @media (max-width: 500px) {
+    .row { grid-template-columns: 1fr; }
+  }
+  label { display: block; font-size: 12px; color: #94a3b8; margin-bottom: 4px; }
+  .help { display: block; font-size: 11px; color: #64748b; margin-top: 2px; }
+  input, select {
+    width: 100%; padding: 9px 10px;
+    background: #0f172a; border: 1px solid #334155; border-radius: 8px;
+    color: #e2e8f0; font-size: 15px; font-family: inherit;
+  }
+  input:focus, select:focus { outline: none; border-color: #60a5fa; }
+  button {
+    background: #2563eb; color: white; border: none;
+    padding: 12px 18px; border-radius: 8px;
+    font-size: 15px; font-weight: 600; cursor: pointer;
+    width: 100%; margin-top: 6px;
+  }
+  button:hover { background: #1d4ed8; }
+  button.secondary { background: #475569; margin-top: 8px; }
+  button.secondary:hover { background: #334155; }
+  .result-box {
+    background: #064e3b; border: 1px solid #059669;
+    border-radius: 8px; padding: 14px; margin-top: 10px;
+  }
+  .result-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
+  .result-row:last-child { border-bottom: none; }
+  .result-label { color: #cbd5e1; font-size: 13px; }
+  .result-value {
+    color: #4ade80; font-weight: 700;
+    font-family: "SF Mono", Consolas, monospace; font-size: 16px;
+  }
+  .result-value.big { font-size: 20px; }
+  .result-value.muted { color: #94a3b8; }
+  .formula-line {
+    font-family: "SF Mono", Consolas, monospace;
+    font-size: 12px; color: #cbd5e1; margin: 4px 0;
+  }
+  .summary { background: #1e3a8a; border: 1px solid #3b82f6; margin-top: 18px; }
+  .summary .card-header { color: #93c5fd; }
+  .copy-btn {
+    background: transparent; border: 1px solid #475569;
+    color: #cbd5e1; padding: 4px 8px; font-size: 11px;
+    width: auto; margin: 0; margin-left: 8px; cursor: pointer;
+  }
+  .hidden { display: none; }
+  .footer { text-align: center; color: #64748b; font-size: 11px;
+            margin-top: 20px; line-height: 1.6; }
+  .info-banner {
+    background: rgba(59, 130, 246, 0.1);
+    border-left: 3px solid #3b82f6;
+    padding: 10px 14px; border-radius: 4px; margin-bottom: 14px;
+    font-size: 12px; color: #cbd5e1; line-height: 1.5;
+  }
+  .pnl-positive { color: #4ade80; }
+  .pnl-negative { color: #f87171; }
+  .section-divider {
+    height: 1px; background: rgba(255,255,255,0.1);
+    margin: 12px 0;
+  }
+  .section-label {
+    font-size: 11px; color: #94a3b8;
+    text-transform: uppercase; letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>Calculadora hedge prop firm v2</h1>
+<div class="subtitle">Método del high de vela M5 · cálculo automático de SL/TP firma + broker</div>
+
+<div class="info-banner">
+  <b>Cómo funciona:</b> mete el high de la vela M5 de cada cuenta + precio de entrada + USD objetivos.
+  Te calculo los 4 precios para MT5 + el USD esperado en cada pata + el resultado neto del ciclo.
+</div>
+
+<!-- ========== SETUP DE BROKERS ========== -->
+
+<div class="card">
+  <div class="card-header">
+    <span class="card-icon">⚙</span> Configuración de cuentas
+  </div>
+
+  <div class="section-label">Cuenta FIRMA (prop)</div>
+  <div class="row">
+    <div>
+      <label>Firma (prop)</label>
+      <select id="firmPreset" onchange="applyPreset('firm')">
+        <option value="FundingPips">FundingPips</option>
+        <option value="Custom">Custom</option>
+      </select>
+    </div>
+    <div>
+      <label>Lots firma</label>
+      <input type="number" id="lotsFirma" step="0.01" value="0.8">
+    </div>
+  </div>
+
+  <div class="row">
+    <div>
+      <label>Comisión firma (USD/lote)</label>
+      <input type="number" id="commFirma" step="0.01" value="5">
+      <span class="help">FundingPips ≈ $5/lote (verifica en specs)</span>
+    </div>
+    <div></div>
+  </div>
+
+  <div class="section-divider"></div>
+
+  <div class="section-label">Cuenta BROKER (cobertura)</div>
+  <div class="row">
+    <div>
+      <label>Broker</label>
+      <select id="brokerPreset" onchange="applyPreset('broker')">
+        <option value="QuoMarkets">Quo Markets</option>
+        <option value="XM">XM</option>
+        <option value="Custom">Custom</option>
+      </select>
+    </div>
+    <div>
+      <label>Lots broker</label>
+      <input type="number" id="lotsBroker" step="0.01" value="0.31">
+    </div>
+  </div>
+
+  <div class="row">
+    <div>
+      <label>Comisión broker (USD/lote)</label>
+      <input type="number" id="commBroker" step="0.01" value="5">
+      <span class="help">Quo Markets Standard $0 · Raw $3/side. XAU típico $5</span>
+    </div>
+    <div></div>
+  </div>
+</div>
+
+<!-- ========== INSTRUMENTO Y SPECS ========== -->
+
+<div class="card">
+  <div class="card-header">
+    <span class="card-icon">1</span> Instrumento y dirección
+  </div>
+
+  <div class="row">
+    <div>
+      <label>Instrumento</label>
+      <select id="instrument" onchange="onInstrumentChange()">
+        <option value="NAS">NAS / NAS100 / NASUSD</option>
+        <option value="XAU">XAU / Gold</option>
+        <option value="US30">US30 / DJI30 / Dow</option>
+        <option value="US500">US500 / SP500</option>
+        <option value="USOIL">USOIL</option>
+        <option value="DAX">DAX / DE40</option>
+      </select>
+    </div>
+    <div>
+      <label>Dirección firma</label>
+      <select id="direction">
+        <option value="BUY">BUY (long firma · short broker)</option>
+        <option value="SELL">SELL (short firma · long broker)</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="row">
+    <div>
+      <label>USD/pt/lot FIRMA</label>
+      <input type="number" id="usdPerPointFirma" step="0.01" value="20">
+      <span class="help">FundingPips NAS=$20 · XAU=$100</span>
+    </div>
+    <div>
+      <label>USD/pt/lot BROKER</label>
+      <input type="number" id="usdPerPointBroker" step="0.01" value="10">
+      <span class="help">Quo Markets NAS=$10 · XAU=$100 (verifica en MT5)</span>
+    </div>
+  </div>
+
+  <div class="row">
+    <div>
+      <label>Spread fijo (puntos)</label>
+      <input type="number" id="spreadFixed" step="0.01" value="1">
+      <span class="help">Se suma siempre 1 punto en el cálculo del broker</span>
+    </div>
+    <div></div>
+  </div>
+</div>
+
+<!-- ========== TARGETS, ENTRADAS Y VELAS ========== -->
+
+<div class="card">
+  <div class="card-header">
+    <span class="card-icon">2</span> Targets, entradas y high de vela M5
+  </div>
+
+  <div class="row">
+    <div>
+      <label>SL objetivo en USD (firma)</label>
+      <input type="number" id="slUsd" step="1" value="600">
+    </div>
+    <div>
+      <label>TP objetivo en USD (firma)</label>
+      <input type="number" id="tpUsd" step="1" value="1250">
+    </div>
+  </div>
+
+  <div class="row">
+    <div>
+      <label>Precio entrada FIRMA</label>
+      <input type="number" id="entryFirma" step="0.01" placeholder="ej: 22500.50">
+      <span class="help">Precio al que entras en MT5 firma</span>
+    </div>
+    <div>
+      <label>Precio entrada BROKER</label>
+      <input type="number" id="entryBroker" step="0.01" placeholder="ej: 22500.96">
+      <span class="help">Precio al que entras en MT5 broker</span>
+    </div>
+  </div>
+
+  <div class="row">
+    <div>
+      <label>HIGH vela M5 FIRMA</label>
+      <input type="number" id="highFirma" step="0.01" placeholder="ej: 22510.00">
+      <span class="help">High de la misma vela M5 en la firma</span>
+    </div>
+    <div>
+      <label>HIGH vela M5 BROKER</label>
+      <input type="number" id="highBroker" step="0.01" placeholder="ej: 22510.45">
+      <span class="help">High de la misma vela M5 en el broker</span>
+    </div>
+  </div>
+
+<button onclick="calcAll()">Calcular todo</button>
+
+</div>
+
+<!-- ========== RESULTADO FIRMA ========== -->
+
+<div id="firmaResult" class="hidden card">
+  <div class="card-header">
+    <span class="card-icon">📈</span> Cuenta FIRMA
+  </div>
+  <div id="firmaContent"></div>
+</div>
+
+<!-- ========== RESULTADO BROKER ========== -->
+
+<div id="brokerResult" class="hidden card">
+  <div class="card-header">
+    <span class="card-icon">🛡</span> Cuenta BROKER
+  </div>
+  <div id="brokerContent"></div>
+</div>
+
+<!-- ========== RESUMEN ========== -->
+
+<div id="summary" class="card summary hidden">
+  <div class="card-header">
+    📋 RESUMEN — meter en MT5 y P&L esperado del ciclo
+  </div>
+  <div id="summaryContent"></div>
+  <button class="secondary" onclick="resetAll()">Limpiar todo</button>
+</div>
+
+<div class="footer">
+  Calculadora local · No envía datos a ningún servidor · Funciona offline<br>
+  Método: SL/TP firma desde USD objetivo · SL/TP broker desde high de vela M5 + spread
+</div>
+
+</div>
+
+<script>
+// Specs por broker × instrumento (USD por punto por lote)
+const SPECS = {
+  FundingPips: { NAS: 20, XAU: 100, US30: 5, US500: 50, USOIL: 10, DAX: 25 },
+  QuoMarkets:  { NAS: 10, XAU: 100, US30: 10, US500: 10, USOIL: 10, DAX: 10 },
+  XM:          { NAS: 20, XAU: 100, US30: 5, US500: 50, USOIL: 10, DAX: 25 },
+};
+
+let lastCalc = null;
+
+function applyPreset(side) {
+  const ins = document.getElementById('instrument').value;
+  if (side === 'firm') {
+    const preset = document.getElementById('firmPreset').value;
+    if (SPECS[preset] && SPECS[preset][ins] !== undefined) {
+      document.getElementById('usdPerPointFirma').value = SPECS[preset][ins];
+    }
+  } else {
+    const preset = document.getElementById('brokerPreset').value;
+    if (SPECS[preset] && SPECS[preset][ins] !== undefined) {
+      document.getElementById('usdPerPointBroker').value = SPECS[preset][ins];
+    }
+  }
+}
+
+function onInstrumentChange() {
+  applyPreset('firm');
+  applyPreset('broker');
+}
+
+function fmt(n, dec=2) { return Number(n).toFixed(dec); }
+function fmtSigned(n, dec=2) { return (n >= 0 ? '+' : '') + Number(n).toFixed(dec); }
+function fmtUsd(n) { return (n >= 0 ? '+' : '−') + '$' + Math.abs(n).toFixed(2); }
+
+function calcAll() {
+  const ins = document.getElementById('instrument').value;
+  const direction = document.getElementById('direction').value;
+  const usdPtF = parseFloat(document.getElementById('usdPerPointFirma').value);
+  const usdPtB = parseFloat(document.getElementById('usdPerPointBroker').value);
+  const lotsF = parseFloat(document.getElementById('lotsFirma').value);
+  const lotsB = parseFloat(document.getElementById('lotsBroker').value);
+  const slUsd = parseFloat(document.getElementById('slUsd').value);
+  const tpUsd = parseFloat(document.getElementById('tpUsd').value);
+  const entryF = parseFloat(document.getElementById('entryFirma').value);
+  const entryB = parseFloat(document.getElementById('entryBroker').value);
+  const highF = parseFloat(document.getElementById('highFirma').value);
+  const highB = parseFloat(document.getElementById('highBroker').value);
+  const commF = parseFloat(document.getElementById('commFirma').value) || 0;
+  const commB = parseFloat(document.getElementById('commBroker').value) || 0;
+  const spread = parseFloat(document.getElementById('spreadFixed').value) || 0;
+
+  const required = [usdPtF, usdPtB, lotsF, lotsB, slUsd, tpUsd, entryF, entryB, highF, highB];
+  if (required.some(v => isNaN(v))) {
+    alert('Faltan valores. Completa todos los campos (incluido los HIGH de vela).');
+    return;
+  }
+
+  // ---- FIRMA: SL/TP en precio desde USD objetivo ----
+  const slDist = slUsd / (lotsF * usdPtF);
+  const tpDist = tpUsd / (lotsF * usdPtF);
+  const isLong = (direction === 'BUY');
+
+  const slFirma = isLong ? entryF - slDist : entryF + slDist;
+  const tpFirma = isLong ? entryF + tpDist : entryF - tpDist;
+  const rr = tpDist / slDist;
+
+  // ---- BROKER: SL/TP usando high de vela + spread ----
+  // Regla del usuario (igual para SL y TP):
+  //   Si dif < 0  -> resultado = high_broker + |dif|  (suma el valor absoluto)
+  //   Si dif > 0  -> resultado = high_broker - dif    (resta)
+  //
+  // TP del broker: se calcula a partir de SL_firma
+  //   (cuando firma pega SL, broker pega TP)
+  const difTp = (highF - slFirma) + spread;
+  const tpBroker = difTp < 0 ? highB + Math.abs(difTp) : highB - difTp;
+
+  // SL del broker: se calcula a partir de TP_firma
+  //   (cuando firma pega TP, broker pega SL)
+  const difSl = (highF - tpFirma) + spread;
+  const slBroker = difSl < 0 ? highB + Math.abs(difSl) : highB - difSl;
+
+  // Distancias broker en pts (desde entry broker)
+  const slBrokerDist = Math.abs(slBroker - entryB);
+  const tpBrokerDist = Math.abs(tpBroker - entryB);
+
+  // USD esperado en broker
+  const slBrokerUsd = lotsB * usdPtB * slBrokerDist;
+  const tpBrokerUsd = lotsB * usdPtB * tpBrokerDist;
+
+  // Comisiones totales por trade
+  const commTotalF = lotsF * commF;
+  const commTotalB = lotsB * commB;
+  const commTotal = commTotalF + commTotalB;
+
+  // Escenarios netos del ciclo
+  const netIfFirmaTp = tpUsd - slBrokerUsd - commTotal;
+  const netIfFirmaSl = -slUsd + tpBrokerUsd - commTotal;
+
+  // Sanity check desactivado: el método de "high de vela" puede dar
+  // resultados que no siguen la lógica BUY/SELL clásica
+  const sanityOK = true;
+
+  lastCalc = {
+    ins, direction, usdPtF, usdPtB, lotsF, lotsB, slUsd, tpUsd, entryF, entryB,
+    highF, highB, spread,
+    slDist, tpDist, rr,
+    slFirma, tpFirma,
+    difTp, difSl, slBroker, tpBroker,
+    slBrokerDist, tpBrokerDist, slBrokerUsd, tpBrokerUsd,
+    commF, commB, commTotalF, commTotalB, commTotal,
+    netIfFirmaTp, netIfFirmaSl, sanityOK
+  };
+
+  renderFirma();
+  renderBroker();
+  renderSummary();
+}
+
+function renderFirma() {
+  const c = lastCalc;
+  document.getElementById('firmaContent').innerHTML = `
+    <div class="formula-line">Distancia SL: ${c.slUsd} / (${c.lotsF} × ${c.usdPtF}) = <b>${fmt(c.slDist)} pts</b></div>
+    <div class="formula-line">Distancia TP: ${c.tpUsd} / (${c.lotsF} × ${c.usdPtF}) = <b>${fmt(c.tpDist)} pts</b></div>
+    <div class="formula-line">R:R efectivo: <b>${fmt(c.rr)} : 1</b></div>
+    <div class="result-box">
+      <div class="result-row">
+        <span class="result-label">Entry firma · ${c.direction}</span>
+        <span class="result-value muted">${fmt(c.entryF)}</span>
+      </div>
+      <div class="result-row">
+        <span class="result-label">SL firma <span class="pnl-negative">(−$${c.slUsd})</span></span>
+        <span><span class="result-value big">${fmt(c.slFirma)}</span>
+          <button class="copy-btn" onclick="copyVal('${fmt(c.slFirma)}', event)">copiar</button></span>
+      </div>
+      <div class="result-row">
+        <span class="result-label">TP firma <span class="pnl-positive">(+$${c.tpUsd})</span></span>
+        <span><span class="result-value big">${fmt(c.tpFirma)}</span>
+          <button class="copy-btn" onclick="copyVal('${fmt(c.tpFirma)}', event)">copiar</button></span>
+      </div>
+    </div>
+  `;
+  document.getElementById('firmaResult').classList.remove('hidden');
+}
+
+function renderBroker() {
+  const c = lastCalc;
+  const oppDir = c.direction === 'BUY' ? 'SELL' : 'BUY';
+  const sanityHTML = c.sanityOK
+    ? `<div class="formula-line" style="color:#86efac">✓ Cordura OK: SL/TP broker en lado correcto</div>`
+    : `<div class="formula-line" style="color:#fbbf24">⚠ Atención: revisa dirección, entradas o highs de vela</div>`;
+
+  // Texto explicativo del signo
+  const slSignoTxt = c.difSl < 0
+    ? `dif &lt; 0 → SL_broker = ${fmt(c.highB)} + ${fmt(Math.abs(c.difSl))}`
+    : `dif &gt; 0 → SL_broker = ${fmt(c.highB)} − ${fmt(c.difSl)}`;
+  const tpSignoTxt = c.difTp < 0
+    ? `dif &lt; 0 → TP_broker = ${fmt(c.highB)} + ${fmt(Math.abs(c.difTp))}`
+    : `dif &gt; 0 → TP_broker = ${fmt(c.highB)} − ${fmt(c.difTp)}`;
+
+  document.getElementById('brokerContent').innerHTML = `
+    <div class="section-label">Cálculo TP broker</div>
+    <div class="formula-line">dif = high_firma − SL_firma + spread = ${fmt(c.highF)} − ${fmt(c.slFirma)} + ${fmt(c.spread)} = <b>${fmtSigned(c.difTp)}</b></div>
+    <div class="formula-line">${tpSignoTxt} = <b>${fmt(c.tpBroker)}</b></div>
+
+    <div class="section-divider"></div>
+
+    <div class="section-label">Cálculo SL broker</div>
+    <div class="formula-line">dif = high_firma − TP_firma + spread = ${fmt(c.highF)} − ${fmt(c.tpFirma)} + ${fmt(c.spread)} = <b>${fmtSigned(c.difSl)}</b></div>
+    <div class="formula-line">${slSignoTxt} = <b>${fmt(c.slBroker)}</b></div>
+
+    ${sanityHTML}
+
+    <div class="result-box">
+      <div class="result-row">
+        <span class="result-label">Entry broker · ${oppDir}</span>
+        <span class="result-value muted">${fmt(c.entryB)}</span>
+      </div>
+      <div class="result-row">
+        <span class="result-label">SL broker <span class="pnl-negative">(−$${fmt(c.slBrokerUsd)})</span></span>
+        <span><span class="result-value big">${fmt(c.slBroker)}</span>
+          <button class="copy-btn" onclick="copyVal('${fmt(c.slBroker)}', event)">copiar</button></span>
+      </div>
+      <div class="result-row">
+        <span class="result-label">TP broker <span class="pnl-positive">(+$${fmt(c.tpBrokerUsd)})</span></span>
+        <span><span class="result-value big">${fmt(c.tpBroker)}</span>
+          <button class="copy-btn" onclick="copyVal('${fmt(c.tpBroker)}', event)">copiar</button></span>
+      </div>
+    </div>
+    <div class="formula-line" style="margin-top:8px">Distancia SL broker: ${fmt(c.slBrokerDist)} pts · TP broker: ${fmt(c.tpBrokerDist)} pts</div>
+    <div class="formula-line">USD broker: ${c.lotsB} lots × $${c.usdPtB}/pt × distancia</div>
+  `;
+  document.getElementById('brokerResult').classList.remove('hidden');
+}
+
+function renderSummary() {
+  const c = lastCalc;
+  const oppDir = c.direction === 'BUY' ? 'SELL' : 'BUY';
+  const netTpClass = c.netIfFirmaTp >= 0 ? 'pnl-positive' : 'pnl-negative';
+  const netSlClass = c.netIfFirmaSl >= 0 ? 'pnl-positive' : 'pnl-negative';
+  document.getElementById('summaryContent').innerHTML = `
+    <div style="font-size:13px; color:#cbd5e1; margin-bottom:8px">
+      <b>FIRMA</b> · ${c.ins} · ${c.direction} · ${c.lotsF} lots
+    </div>
+    <div class="result-row">
+      <span class="result-label">SL firma</span>
+      <span class="result-value">${fmt(c.slFirma)}</span>
+    </div>
+    <div class="result-row">
+      <span class="result-label">TP firma</span>
+      <span class="result-value">${fmt(c.tpFirma)}</span>
+    </div>
+    <div style="font-size:13px; color:#cbd5e1; margin:14px 0 8px 0">
+      <b>BROKER</b> · ${c.ins} · ${oppDir} · ${c.lotsB} lots
+    </div>
+    <div class="result-row">
+      <span class="result-label">SL broker</span>
+      <span class="result-value">${fmt(c.slBroker)}</span>
+    </div>
+    <div class="result-row">
+      <span class="result-label">TP broker</span>
+      <span class="result-value">${fmt(c.tpBroker)}</span>
+    </div>
+
+    <div style="margin-top:14px; padding-top:10px; border-top:1px solid rgba(255,255,255,0.15)">
+      <div style="font-size:13px; color:#cbd5e1; margin-bottom:8px">
+        <b>P&L neto del trade</b>
+        <span style="font-size:11px; color:#94a3b8"> · descuenta comisiones, NO incluye eval fee</span>
+      </div>
+      <div class="result-row">
+        <span class="result-label">Comisión total (firma $${fmt(c.commTotalF)} + broker $${fmt(c.commTotalB)})</span>
+        <span class="result-value pnl-negative">−$${fmt(c.commTotal)}</span>
+      </div>
+      <div class="result-row">
+        <span class="result-label">Si firma TP (firma gana, broker pierde)</span>
+        <span class="result-value ${netTpClass}">${fmtUsd(c.netIfFirmaTp)}</span>
+      </div>
+      <div class="result-row">
+        <span class="result-label">Si firma SL (firma pierde, broker gana)</span>
+        <span class="result-value ${netSlClass}">${fmtUsd(c.netIfFirmaSl)}</span>
+      </div>
+    </div>
+  `;
+  document.getElementById('summary').classList.remove('hidden');
+}
+
+function copyVal(v, ev) {
+  navigator.clipboard.writeText(v).then(() => {
+    const orig = ev.target.textContent;
+    ev.target.textContent = '✓';
+    setTimeout(() => { ev.target.textContent = orig; }, 800);
+  });
+}
+
+function resetAll() {
+  if (!confirm('¿Limpiar todos los campos?')) return;
+  document.getElementById('lotsFirma').value = '0.8';
+  document.getElementById('lotsBroker').value = '0.31';
+  document.getElementById('slUsd').value = '600';
+  document.getElementById('tpUsd').value = '1250';
+  document.getElementById('entryFirma').value = '';
+  document.getElementById('entryBroker').value = '';
+  document.getElementById('highFirma').value = '';
+  document.getElementById('highBroker').value = '';
+  document.getElementById('instrument').value = 'NAS';
+  document.getElementById('direction').value = 'BUY';
+  document.getElementById('firmPreset').value = 'FundingPips';
+  document.getElementById('brokerPreset').value = 'QuoMarkets';
+  document.getElementById('commFirma').value = '5';
+  document.getElementById('commBroker').value = '5';
+  document.getElementById('spreadFixed').value = '1';
+  applyPreset('firm');
+  applyPreset('broker');
+  document.getElementById('firmaResult').classList.add('hidden');
+  document.getElementById('brokerResult').classList.add('hidden');
+  document.getElementById('summary').classList.add('hidden');
+  lastCalc = null;
+}
+
+// init
+applyPreset('firm');
+applyPreset('broker');
+</script>
+
+</body>
+</html>
